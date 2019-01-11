@@ -129,11 +129,6 @@ if __name__=="__main__":
         if feature['negative'] is False:
             train_label.append(feature['label'])
             train_array.append(feature['all_sequence'])
-            if train_entityNum.__contains__(feature['entityNum']):
-                train_entityNum[feature['entityNum']]=train_entityNum[feature['entityNum']]+1
-            else:
-                train_entityNum[feature['entityNum']]=1
-            # train_entityNum.append(feature['entityNum'])
             position_vec1 = []
             position_vec2 = []
             for i in range(len(feature['all_sequence'])):
@@ -143,13 +138,10 @@ if __name__=="__main__":
                 dis_2 = i - posEnt2
                 position_vec1.append(getPositionVec(dis_1))
                 position_vec2.append(getPositionVec(dis_2))
-            # train_postion1.append(np.array(position_vec1))
-            # train_postion2.append(np.array(position_vec2))
+
             train_postion1.append(position_vec1)
             train_postion2.append(position_vec2)
-    # for key in sorted(train_entityNum.keys()):
-    #     print(key,':',train_entityNum[key])
-    #     # openfile.write(str(key)+":"+str(dic[key])+"\n")
+
     train_array = np.array(train_array)
     train_postion1 = np.array(train_postion1)
     train_postion2 = np.array(train_postion2)
@@ -180,6 +172,7 @@ if __name__=="__main__":
                 position_vec2.append(getPositionVec(dis_2))
             test_postion1.append(position_vec1)
             test_postion2.append(position_vec2)
+
     test_array = np.array(test_array)
     test_postion1 = np.array(test_postion1)
     test_postion2 = np.array(test_postion2)
@@ -247,14 +240,20 @@ if __name__=="__main__":
     batchsize=32
     hidden_dim_1=200
 
-    forward = LSTM(hidden_dim_1, return_sequences=True)(l_embedding)
-    backward = LSTM(hidden_dim_1, return_sequences=True, go_backwards=True)(r_embedding)
+    from keras.layers import Lambda
+    forward_l = LSTM(hidden_dim_1, return_sequences=True)(l_embedding)
+    forward_r = LSTM(hidden_dim_1, return_sequences=True, go_backwards=True)(l_embedding)
+    forward_r = Lambda(lambda x: K.reverse(x, axes=1))(forward_r)
 
-    sequence_input = concatenate([forward, word_fea, backward], axis=-1)
+    backward_l = LSTM(hidden_dim_1, return_sequences=True)(r_embedding)
+    backward_r = LSTM(hidden_dim_1, return_sequences=True, go_backwards=True)(r_embedding)
+    backward_r = Lambda(lambda x: K.reverse(x, axes=1))(backward_r)
+
+
+    sequence_input = concatenate([forward_l,forward_r, word_fea, backward_l,backward_r], axis=-1)
     sequence_input = Dense(256, activation='relu')(sequence_input)
     sequence_input = Dense(64, activation='relu')(sequence_input)
     sequence_input = concatenate([sequence_input,pos_fea1,pos_fea2], axis=-1)
-
 
     x1 = Conv1D(64, 3, activation='relu', dilation_rate=2, padding='same')(sequence_input)
     x1 = MaxPooling1D(5)(x1)
@@ -273,30 +272,17 @@ if __name__=="__main__":
     classes_num=[188,822,1669,1319,19012]
     model = Model(inputs=[left_context, input_word, right_context,input_pos1,input_pos2], outputs=preds)
     model.summary()
-    model.compile(
-#loss='categorical_crossentropy',
-loss=focal_loss(classes_num),
+    model.compile(loss=focal_loss(classes_num),
                   optimizer='adam',
                   metrics=['accuracy', f1_score, precision, recall])
     train_label_cat = np_utils.to_categorical(train_label, 5)  # 将类别按照one-hot进行编码
     test_backup = np.array(copy.deepcopy(test_label))
     test_label_cat = np_utils.to_categorical(test_label, 5)
-    callbackmy = CallBackMy(test_array=test_array,
-                            windows=window,
-                            lcontext=left_x_test,
-                            rcontext=right_x_test,
-                            testpos1=test_postion1,
-                            testpos2=test_postion2,
-                            test_backup=test_backup,
-                            log_dict={"filters": filters, "batchsize": batchsize},
-                            filename="log//process//8.txt",
-                            filename2="log//result//8.txt")
-
-    model.fit([left_x_train[0:20], train_array[0:20], right_x_train[0:20], train_postion1[0:20], train_postion2][0:20], train_label_cat[0:20],
+    model.fit([left_x_train, train_array, right_x_train, train_postion1, train_postion2], train_label_cat,
               batch_size=batchsize,
               epochs=50,
-              validation_data=([left_x_test, test_array, right_x_test, test_postion1, test_postion2], test_label_cat),
-              callbacks=callbackmy,verbose=1)
+              validation_data=([left_x_test, test_array, right_x_test, test_postion1, test_postion2], test_label_cat),verbose=1)
+
     predict = []
     predicted=model.predict([left_x_test, test_array, right_x_test, test_postion1, test_postion2], verbose=0)
     predicted = predicted.tolist()
