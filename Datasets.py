@@ -117,8 +117,8 @@ class Feature(object):
             # print sequence
             # ------->instance['negative'], 决定是否提前过滤掉该关系
             instance['negative'] = False
-            if instance['binary'] == 0:
-                instance['negative'] = self.filter(instance, relation)
+            
+            instance['negative'] = self.filter(instance, relation)
             instance['relation'] = relation
             instance['context'] = self.sen.new_context
             self.instances.append(instance)
